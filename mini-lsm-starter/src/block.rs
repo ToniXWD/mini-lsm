@@ -43,20 +43,37 @@ impl Block {
     /// Decode from the data layout, transform the input `data` to a single `Block`
     pub fn decode(data: &[u8]) -> Self {
         let u16_bytes = std::mem::size_of::<u16>();
+
+        // 检查数据长度至少包含偏移量数组长度
+        if data.len() < u16_bytes {
+            panic!("Invalid data: too short to contain offset array length");
+        }
+
+        // 读取偏移量数组长度
         let last_two_bytes = &data[data.len() - u16_bytes..];
         let num_entry = u16::from_le_bytes(last_two_bytes.try_into().unwrap()) as usize;
 
-        let offsets_slice_u8 =
-            &data[data.len() - (num_entry * u16_bytes + u16_bytes)..data.len() - u16_bytes];
-        let offsets_slice = unsafe {
-            std::slice::from_raw_parts(offsets_slice_u8.as_ptr() as *const u16, num_entry)
-        };
+        // 计算并检查总的元数据大小
+        let metadata_size = num_entry * u16_bytes + u16_bytes;
+        if data.len() < metadata_size {
+            panic!("Invalid data: too short to contain offset array");
+        }
 
-        let data_slice = &data[..data.len() - (num_entry * u16_bytes + u16_bytes)];
+        // 获取偏移量数组的字节切片
+        let offsets_slice_u8 = &data[data.len() - metadata_size..data.len() - u16_bytes];
+
+        // 安全地将字节转换为 u16 数组
+        let offsets: Vec<u16> = offsets_slice_u8
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
+
+        // 获取实际数据
+        let data_slice = &data[..data.len() - metadata_size];
 
         Block {
             data: data_slice.to_vec(),
-            offsets: offsets_slice.to_vec(),
+            offsets,
         }
     }
 
